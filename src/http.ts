@@ -43,7 +43,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export async function fetchUsageJSON(
   url: string,
   token: string,
-  label: string,
   headers: Record<string, string> = {},
 ): Promise<unknown> {
   const response = await withTimeout(
@@ -65,7 +64,7 @@ export async function fetchUsageJSON(
       TIMEOUT_MS,
     );
     throw new Error(
-      `${label} usage request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 120)}` : ""}`,
+      `usage request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 120)}` : ""}`,
     );
   }
   return withTimeout(response.json(), TIMEOUT_MS);

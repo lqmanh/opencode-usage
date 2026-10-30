@@ -6,8 +6,9 @@ OpenCode v2 TUI plugin that shows the selected provider's quota/usage in the sid
 
 - [OpenCode Go](https://opencode.ai/go)
 - [Kimi for Coding CN](https://www.kimi.com/code) and [Kimi for Coding Global](https://www.kimi.ai/code)
-- [Z.AI Coding Plan](https://z.ai) and [Zhipu AI Coding Plan](https://bigmodel.cn)
-- [ChatGPT Go/Plus/Pro](https://chatgpt.com)
+- [Z.AI Coding Plan](https://z.ai/subscribe) and [Zhipu AI Coding Plan](https://www.bigmodel.cn/glm-coding)
+- [ChatGPT Go/Plus/Pro](https://chatgpt.com/pricing)
+- [Claude Agent](https://opencode.ai/v2/docs/providers#claude-agent) with a [Claude](https://claude.com/pricing) subscription
 
 ## Preview
 
@@ -64,6 +65,7 @@ Add the plugin to `cli.json`:
 ## Limitations
 
 - Expired Console credentials are reported, not refreshed by the plugin; the token refreshes the next time OpenCode uses it, so send a prompt with an OpenCode Go model. Alternatively, configure an API key.
+- Claude Agent usage reads Claude Code's login on the machine running the TUI (macOS Keychain or `~/.claude/.credentials.json`). Expired tokens are reported, not refreshed; send a prompt with a Claude Agent model to refresh it.
 - No manual refresh; usage updates on the poll interval and when credentials change.
 
 ## Development

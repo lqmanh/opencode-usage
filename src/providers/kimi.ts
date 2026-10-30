@@ -78,7 +78,7 @@ async function fetchUsage(
   endpoint: string,
   credential: Credential,
 ): Promise<UsageWindow[]> {
-  return decodeUsage(await fetchUsageJSON(endpoint, credential.token, "Kimi"));
+  return decodeUsage(await fetchUsageJSON(endpoint, credential.token));
 }
 
 function defineKimi(id: string, endpoint: string): UsageProvider {

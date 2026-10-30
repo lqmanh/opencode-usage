@@ -46,7 +46,7 @@ async function fetchUsage(credential: Credential): Promise<UsageWindow[]> {
   const accountID = credential.metadata.accountID;
   const headers =
     typeof accountID === "string" ? { "chatgpt-account-id": accountID } : undefined;
-  return decodeUsage(await fetchUsageJSON(ENDPOINT, credential.token, "OpenAI", headers));
+  return decodeUsage(await fetchUsageJSON(ENDPOINT, credential.token, headers));
 }
 
 export const openai: UsageProvider = {

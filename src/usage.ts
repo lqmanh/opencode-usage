@@ -9,6 +9,8 @@ export interface UsageWindow {
 
 export const WINDOW_LABELS = { rolling: "5h", weekly: "1w", monthly: "1mo" } as const;
 
+export type WindowID = keyof typeof WINDOW_LABELS;
+
 export function windowLabel(minutes: number): string {
   if (minutes % (7 * 24 * 60) === 0) return `${minutes / (7 * 24 * 60)}w`;
   if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}d`;

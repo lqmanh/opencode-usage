@@ -1,4 +1,5 @@
 import type { CredentialEntry } from "@opencode/client";
+import { claudeAgent } from "./claude-agent";
 import { kimiCn, kimiGlobal } from "./kimi";
 import { openai } from "./openai";
 import { opencodeGo } from "./opencode-go";
@@ -8,6 +9,7 @@ import { zaiCodingPlan, zhipuaiCodingPlan } from "./zai";
 const PROVIDERS: readonly UsageProvider[] = [
   opencodeGo,
   openai,
+  claudeAgent,
   kimiCn,
   kimiGlobal,
   zaiCodingPlan,
@@ -24,13 +26,13 @@ export function findProvider(
   );
 }
 
-function toCredential(entry: CredentialEntry): Credential | undefined {
+function toCredential(entry: CredentialEntry): Credential {
   const value = entry.value;
-  if (value.type !== "oauth" && value.type !== "key") return undefined;
   return {
     integrationID: entry.integrationID,
     kind: value.type,
-    token: value.type === "oauth" ? value.access : value.key,
+    // External credentials are owned by another tool; their providers read the token.
+    token: value.type === "oauth" ? value.access : value.type === "key" ? value.key : "",
     label: entry.label,
     expires: value.type === "oauth" ? value.expires : undefined,
     metadata: value.metadata ?? {},
@@ -48,7 +50,7 @@ export function resolveCredential(
     for (const entry of entries) {
       if (entry.integrationID !== integration) continue;
       const credential = toCredential(entry);
-      if (!credential || !provider.accepts(credential)) continue;
+      if (!provider.accepts(credential)) continue;
       if (entry.active) return credential;
       fallback ??= credential;
     }

@@ -53,13 +53,12 @@ function decodeUsage(input: unknown): UsageWindow[] {
 
 async function fetchUsage(
   endpoint: string,
-  label: string,
   credential: Credential,
 ): Promise<UsageWindow[]> {
   // The official usage plugin authenticates with the raw token, not Bearer:
   // https://github.com/zai-org/zai-coding-plugins
   return decodeUsage(
-    await fetchUsageJSON(endpoint, credential.token, label, {
+    await fetchUsageJSON(endpoint, credential.token, {
       Authorization: credential.token,
       "Accept-Language": "en-US,en",
       "Content-Type": "application/json",
@@ -67,22 +66,20 @@ async function fetchUsage(
   );
 }
 
-function defineZai(id: string, endpoint: string, label: string): UsageProvider {
+function defineZai(id: string, endpoint: string): UsageProvider {
   return {
     id,
     integrations: [id],
     accepts: () => true,
-    fetch: (credential) => fetchUsage(endpoint, label, credential),
+    fetch: (credential) => fetchUsage(endpoint, credential),
   };
 }
 
 export const zaiCodingPlan = defineZai(
   "zai-coding-plan",
   "https://api.z.ai/api/monitor/usage/quota/limit",
-  "Z.AI",
 );
 export const zhipuaiCodingPlan = defineZai(
   "zhipuai-coding-plan",
   "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
-  "Zhipu AI",
 );

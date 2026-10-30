@@ -4,12 +4,11 @@ import {
   expectUsageRecord,
   expectWindows,
   type UsageWindow,
+  type WindowID,
 } from "../usage";
 import type { Credential, UsageProvider } from "./types";
 
 const INTEGRATIONS = ["opencode-go", "opencode"] as const;
-
-type WindowID = keyof typeof WINDOW_LABELS;
 
 // API keys use the zen endpoint; Console tokens use the inference gateway.
 function endpointFor(credential: Credential) {
@@ -54,7 +53,7 @@ async function fetchUsage(credential: Credential): Promise<UsageWindow[]> {
       ? { "x-opencode-org-id": orgID }
       : undefined;
   return decodeUsage(
-    await fetchUsageJSON(endpointFor(credential), credential.token, "Go", headers),
+    await fetchUsageJSON(endpointFor(credential), credential.token, headers),
   );
 }
 

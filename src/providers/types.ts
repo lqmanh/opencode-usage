@@ -2,7 +2,7 @@ import type { UsageWindow } from "../usage";
 
 export type Credential = {
   integrationID: string;
-  kind: "key" | "oauth";
+  kind: "key" | "oauth" | "external";
   token: string;
   label: string;
   expires?: number;
