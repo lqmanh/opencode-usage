@@ -1,7 +1,6 @@
-import { messageOf, UsageError } from "./errors";
-import { accountKeyOf } from "./providers/account-key";
+import { messageOf, UsageError } from "../shared/errors";
+import type { ProviderListing, ProviderSnapshot, UsageErrorInfo } from "../shared/usage";
 import type { Credential, UsageProvider } from "./providers/types";
-import type { ProviderListing, ProviderSnapshot, UsageErrorInfo } from "./usage";
 
 export interface UsageEntry {
   provider: UsageProvider;
@@ -84,7 +83,7 @@ type AccountIdentity = Pick<ProviderListing, "accountLabel" | "accountKey">;
 function accountIdentityOf(entry: UsageEntry, credential: Credential): AccountIdentity {
   return {
     ...(credential.label ? { accountLabel: credential.label } : {}),
-    accountKey: accountKeyOf(entry.provider.id, credential),
+    accountKey: entry.provider.accountKey?.(credential) ?? null,
   };
 }
 

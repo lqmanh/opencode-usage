@@ -1,6 +1,7 @@
-import { epochToISO, fetchUsageJSON, isRecord, toNumber } from "../http";
-import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../usage";
-import { expectUsageRecord, expectWindows } from "./decode";
+import { isRecord } from "../../shared/guards";
+import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../../shared/usage";
+import { epochToISO, fetchUsageJSON, toNumber } from "../http";
+import { expectUsageRecord, expectWindows, prefixed } from "./helpers";
 import type { Credential, UsageProvider } from "./types";
 
 const ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
@@ -49,4 +50,5 @@ export const openai: UsageProvider = {
   // ChatGPT subscription usage is only readable through an OAuth connection.
   accepts: (credential) => credential.kind === "oauth",
   fetch: fetchUsage,
+  accountKey: (credential) => prefixed("openai:account:", credential.metadata.accountID),
 };

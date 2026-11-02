@@ -1,7 +1,8 @@
-import { epochToISO, fetchUsageJSON, isRecord, toNumber } from "../http";
-import { WINDOW_LABELS, type UsageWindow } from "../usage";
-import { expectUsageRecord, expectWindows } from "./decode";
-import { defineEndpointProvider, type Credential } from "./types";
+import { isRecord } from "../../shared/guards";
+import { WINDOW_LABELS, type UsageWindow } from "../../shared/usage";
+import { epochToISO, fetchUsageJSON, toNumber } from "../http";
+import { defineEndpointProvider, expectUsageRecord, expectWindows } from "./helpers";
+import type { Credential } from "./types";
 
 type WindowData = {
   percent: number;

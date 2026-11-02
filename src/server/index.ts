@@ -1,14 +1,10 @@
 import type { ConnectionInfo, ProviderInfo } from "@opencode/client";
 import { Plugin } from "@opencode/plugin";
-import { messageOf, UsageError } from "./errors";
-import { isRecord } from "./http";
+import { messageOf, UsageError } from "../shared/errors";
+import { isRecord } from "../shared/guards";
+import { USAGE_INVALIDATION_EVENTS, usageRpc } from "../shared/rpc";
 import { findProvider } from "./providers";
-import {
-  credentialFromValue,
-  type Credential,
-  type CredentialValue,
-} from "./providers/types";
-import { USAGE_INVALIDATION_EVENTS, usageRpc } from "./rpc";
+import type { Credential } from "./providers/types";
 import {
   createUsageService,
   invalidateUsageCache,
@@ -21,6 +17,10 @@ type ProviderDirectory = {
 };
 
 type IntegrationDirectory = Plugin.Context["integration"];
+
+type CredentialValue = NonNullable<
+  Awaited<ReturnType<Plugin.Context["integration"]["connection"]["resolve"]>>
+>;
 
 type GetInput = {
   providerID?: string;
@@ -72,6 +72,22 @@ async function singleEntry(
   } catch {
     return undefined;
   }
+}
+
+function credentialFromValue(
+  integrationID: string,
+  value: CredentialValue,
+  label: string,
+): Credential {
+  return {
+    integrationID,
+    kind: value.type,
+    // External credentials are owned by another tool; their providers read the token.
+    token: value.type === "oauth" ? value.access : value.type === "key" ? value.key : "",
+    label,
+    expires: value.type === "oauth" ? value.expires : undefined,
+    metadata: value.metadata ?? {},
+  };
 }
 
 async function resolveCredential(

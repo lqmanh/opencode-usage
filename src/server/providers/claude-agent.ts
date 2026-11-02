@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { UsageError } from "../errors";
-import { fetchUsageJSON, isRecord, toNumber } from "../http";
-import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../usage";
-import { expectUsageRecord, expectWindows } from "./decode";
+import { UsageError } from "../../shared/errors";
+import { isRecord } from "../../shared/guards";
+import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../../shared/usage";
+import { fetchUsageJSON, toNumber } from "../http";
+import { expectUsageRecord, expectWindows } from "./helpers";
 import type { UsageProvider } from "./types";
 
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";

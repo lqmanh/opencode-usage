@@ -206,3 +206,9 @@ const windows = (result.output?.providers[0]?.windows ?? []).map(
 bun install
 bun run check
 ```
+
+### Project layout
+
+- `src/shared` — RPC contract, usage types, shared errors, the UI-agnostic usage client, and formatting helpers shared by TUI and future GUI clients.
+- `src/server` — server plugin entry.
+- `src/tui` — TUI plugin entry.

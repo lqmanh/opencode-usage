@@ -1,12 +1,8 @@
-import { UsageError } from "./errors";
-import { withTimeout } from "./timeout";
+import { UsageError } from "../shared/errors";
+import { withTimeout } from "../shared/timeout";
 
 const TIMEOUT_MS = 10_000;
 const TIMEOUT_MESSAGE = `Request did not respond within ${TIMEOUT_MS}ms`;
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 export function toNumber(value: unknown): number | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;

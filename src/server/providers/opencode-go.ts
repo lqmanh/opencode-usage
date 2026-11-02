@@ -1,7 +1,8 @@
-import { UsageError } from "../errors";
-import { fetchUsageJSON, isRecord } from "../http";
-import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../usage";
-import { expectUsageRecord, expectWindows } from "./decode";
+import { UsageError } from "../../shared/errors";
+import { isRecord } from "../../shared/guards";
+import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../../shared/usage";
+import { fetchUsageJSON } from "../http";
+import { expectUsageRecord, expectWindows, prefixed } from "./helpers";
 import type { Credential, UsageProvider } from "./types";
 
 // API keys use the zen endpoint; Console tokens use the inference gateway.
@@ -60,4 +61,8 @@ export const opencodeGo: UsageProvider = {
   accepts: (credential) =>
     !(credential.integrationID === "opencode" && credential.kind === "key"),
   fetch: fetchUsage,
+  accountKey: (credential) =>
+    credential.kind === "oauth"
+      ? prefixed("opencode:organization:", credential.metadata.orgID)
+      : null,
 };

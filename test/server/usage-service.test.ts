@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { UsageProvider } from "../src/providers/types";
+import type { UsageProvider } from "../../src/server/providers/types";
 import {
   createUsageService,
   invalidateUsageCache,
   type UsageEntry,
   type UsageService,
   type UsageServiceOptions,
-} from "../src/usage-service";
-import type { UsageWindow } from "../src/usage";
+} from "../../src/server/usage-service";
+import type { UsageWindow } from "../../src/shared/usage";
 import { credential, provider } from "./fixtures";
 
 function window(percent: number): UsageWindow[] {
@@ -58,6 +58,7 @@ describe("list", () => {
         return window(10);
       },
       () => false,
+      () => "openai:account:acct_123",
     );
     const service = createService({
       resolveCredential: async (entry) => {
@@ -89,10 +90,15 @@ describe("list", () => {
 describe("get", () => {
   test("includes accountKey in successful and unavailable snapshots", async () => {
     let fetches = 0;
-    const fetching = provider("openai", async () => {
-      fetches++;
-      return window(10);
-    });
+    const fetching = provider(
+      "openai",
+      async () => {
+        fetches++;
+        return window(10);
+      },
+      () => true,
+      () => "openai:account:acct_123",
+    );
     const blocked = provider(
       "openai",
       async () => {
@@ -100,6 +106,7 @@ describe("get", () => {
         return window(10);
       },
       () => false,
+      () => "openai:account:acct_123",
     );
     const service = createService({
       resolveCredential: async () => credential({ metadata: { accountID: "acct_123" } }),

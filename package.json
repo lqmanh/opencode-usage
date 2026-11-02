@@ -9,8 +9,8 @@
     "url": "git+https://github.com/lqmanh/opencode-usage.git"
   },
   "exports": {
-    "./server": "./src/server.ts",
-    "./tui": "./src/tui.tsx"
+    "./server": "./src/server/index.ts",
+    "./tui": "./src/tui/index.tsx"
   },
   "files": [
     "src"

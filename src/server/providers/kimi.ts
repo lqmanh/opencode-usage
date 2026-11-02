@@ -1,7 +1,8 @@
-import { fetchUsageJSON, isRecord, toNumber } from "../http";
-import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../usage";
-import { expectUsageRecord, expectWindows } from "./decode";
-import { defineEndpointProvider, type Credential } from "./types";
+import { isRecord } from "../../shared/guards";
+import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../../shared/usage";
+import { fetchUsageJSON, toNumber } from "../http";
+import { defineEndpointProvider, expectUsageRecord, expectWindows } from "./helpers";
+import type { Credential } from "./types";
 
 const DEFAULT_WINDOW_MINUTES = 5 * 60;
 const TIME_UNITS: Record<string, number> = { MINUTE: 1, HOUR: 60, DAY: 1440 };
