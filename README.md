@@ -1,6 +1,17 @@
 # opencode-usage
 
-OpenCode v2 TUI plugin that shows the selected provider's quota/usage in the sidebar, plus a compact indicator above the prompt.
+OpenCode v2 plugin for model provider quota/usage. It has two parts:
+
+- **Server plugin** — resolves credentials, fetches usage, caches it, and exposes it through OpenCode's plugin RPC.
+- **TUI plugin** — an RPC client that renders TUI-specific surfaces. It never reads credentials or calls provider endpoints.
+
+The RPC is the shared contract. The TUI is one client; a GUI plugin or third-party client can render the same data with its own surfaces.
+
+```text
+TUI ─┐
+GUI ─┼─ RPC get / updated ──> server plugin ──> providers
+... ─┘
+```
 
 ## Supported providers
 
@@ -10,7 +21,23 @@ OpenCode v2 TUI plugin that shows the selected provider's quota/usage in the sid
 - [ChatGPT Go/Plus/Pro](https://chatgpt.com/pricing)
 - [Claude Agent](https://opencode.ai/v2/docs/providers#claude-agent) with a [Claude](https://claude.com/pricing) subscription
 
-## Preview
+## Installation
+
+Add the package to `opencode.json(c)`:
+
+```json
+{
+  "plugins": ["github:lqmanh/opencode-usage"]
+}
+```
+
+OpenCode loads both parts from this entry; the CLI loads the TUI part automatically. `cli.json` is for CLI-only plugins, so this package does not need an entry there.
+
+### Remote server
+
+Configure the package in the remote server's `opencode.json(c)`. The TUI part is loaded from that server's plugin list.
+
+## TUI usage
 
 Sidebar widget:
 
@@ -21,33 +48,25 @@ OpenCode Go                          Default
 1mo  7% ██░░░░░░░░░░░░░░░░░░░░░░░░░░     20d
 ```
 
-Compact indicator:
+Compact indicator above the prompt:
 
 ```text
 OpenCode Go               ◈ ◇ ◇ 5h ·   3h 6m
 ```
 
-The glyphs stand for the provider's quota windows in order. Each fills up as usage rises: `◇` below 70%, `◈` from 70%, `◆` from 90%. The window the countdown tracks is colored by the same levels — green, amber, red — while the others stay muted.
+The glyphs stand for the provider's quota windows in order. Each fills up as usage rises: `◇` below 70%, `◈` from 70%, `◆` from 90%. The window the countdown tracks is colored by the same levels: green, amber, red, while the others stay muted.
 
 <!-- prettier-ignore -->
 > [!TIP]
 > Click the name to toggle between the provider name and the active account. Click the glyphs, label, or countdown to cycle the window it tracks.
 
-## Installation
-
-Add the plugin to `cli.json`:
-
-```json
-{
-  "plugins": ["github:lqmanh/opencode-usage"]
-}
-```
-
 ### Options
 
-| Option           | Default | Description               |
-| ---------------- | ------- | ------------------------- |
-| `refreshSeconds` | `300`   | Poll interval, minimum 30 |
+| Option           | Default | Description                           |
+| ---------------- | ------- | ------------------------------------- |
+| `refreshSeconds` | `300`   | Poll interval in seconds, minimum 30. |
+
+`refreshSeconds` is the TUI polling interval. Configure it in the same plugin entry:
 
 ```json
 {
@@ -62,11 +81,91 @@ Add the plugin to `cli.json`:
 }
 ```
 
-## Limitations
+Other clients manage their own polling; the server never polls. The TUI also refreshes when new usage is available and when the active account changes. It has no manual refresh action.
 
-- Expired Console credentials are reported, not refreshed by the plugin; the token refreshes the next time OpenCode uses it, so send a prompt with an OpenCode Go model. Alternatively, configure an API key.
-- Claude Agent usage reads Claude Code's login on the machine running the TUI (macOS Keychain or `~/.claude/.credentials.json`). Expired tokens are reported, not refreshed; send a prompt with a Claude Agent model to refresh it.
-- No manual refresh; usage updates on the poll interval and when credentials change.
+## RPC
+
+The server exposes `get` on the `opencode-usage` RPC.
+
+Input:
+
+```json
+{
+  "providerID": "opencode-go"
+}
+```
+
+`providerID` is optional and is OpenCode's provider ID (`ProviderInfo.id`). With it, `providers` contains zero or one snapshot. Without it, `providers` contains every configured supported provider with an active credential. Unconfigured and unsupported providers are omitted.
+
+Output:
+
+```json
+{
+  "providers": [
+    {
+      "providerID": "opencode-go",
+      "name": "OpenCode Go",
+      "account": "Default",
+      "fetchedAt": 1762041600000,
+      "windows": [
+        {
+          "id": "rolling",
+          "label": "5h",
+          "percent": 42,
+          "resetsAt": "2026-11-02T12:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `fetchedAt` is the snapshot version in Unix milliseconds.
+- `resetsAt` is ISO 8601 and may be empty.
+- `account` is the active connection's label or environment variable name.
+
+Provider failures use the same snapshot with `windows: []` and an `error` containing a `code` and `message`:
+
+| Error code | Meaning |
+| --- | --- |
+| `expired` | The active credential is expired, was rejected, or could not be resolved. |
+| `unavailable` | An active credential exists but cannot be used to read usage. |
+| `failed` | The provider request, timeout, or response decoding failed. |
+
+Results are cached for 60 seconds. After a fresh fetch, the server emits `rpc.opencode-usage.updated` with `{ providerID, fetchedAt }`. Clients can refresh on that event or poll; ignore events that are not newer than the displayed snapshot. Usage follows the account currently active in OpenCode.
+
+### Building a client
+
+A client only needs the server part.
+
+1. Call `get({ providerID })` for the provider the user is looking at, or `get({})` for all configured providers.
+2. Render `windows` and `account` using the client's own surfaces.
+3. Handle `error` entries per provider. An empty `providers` array means unconfigured or unsupported.
+4. Subscribe to `rpc.opencode-usage.updated` if the client has an event stream. Otherwise poll.
+5. Use `fetchedAt` to ignore stale events and avoid unnecessary refetches.
+
+Example:
+
+```ts
+const result = await api.rpc.call({
+  rpcID: "opencode-usage",
+  method: "get",
+  input: { providerID },
+  location: { directory: cwd },
+});
+const windows = (result.output?.providers[0]?.windows ?? []).map(
+  ({ label, percent, resetsAt }) => ({
+    label,
+    usedPercent: percent,
+    resetsAt,
+  }),
+);
+```
+
+## Good to know
+
+- Usage is collected on the OpenCode server host. With a remote server, credentials and the Claude Code login for Claude Agent must exist there.
+- The RPC requires the server part; the TUI cannot collect usage alone.
 
 ## Development
 
@@ -74,5 +173,3 @@ Add the plugin to `cli.json`:
 bun install
 bun run check
 ```
-
-To load this checkout directly, point `cli.json` at the repository directory. The root `tui.tsx` re-exports `src/tui.tsx` because OpenCode resolves local plugin directories by filename, while installed packages use the `./tui` export.

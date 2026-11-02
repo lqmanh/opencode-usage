@@ -1,7 +1,7 @@
 {
   "name": "opencode-usage",
-  "version": "0.2.0",
-  "description": "Model provider quota/usage in OpenCode v2 TUI",
+  "version": "0.3.0",
+  "description": "Model provider quota/usage in OpenCode v2 TUI and plugin RPC",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -9,6 +9,7 @@
     "url": "git+https://github.com/lqmanh/opencode-usage.git"
   },
   "exports": {
+    "./server": "./src/server.ts",
     "./tui": "./src/tui.tsx"
   },
   "files": [

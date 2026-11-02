@@ -3,14 +3,10 @@ import { readFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { UsageError } from "../errors";
 import { fetchUsageJSON, isRecord, toNumber } from "../http";
-import {
-  WINDOW_LABELS,
-  expectUsageRecord,
-  expectWindows,
-  type UsageWindow,
-  type WindowID,
-} from "../usage";
+import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../usage";
+import { expectUsageRecord, expectWindows } from "./decode";
 import type { UsageProvider } from "./types";
 
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
@@ -62,9 +58,15 @@ function parseLogin(raw: string | undefined): Login | undefined {
 async function readToken(): Promise<string> {
   const [keychain, file] = await Promise.all([readKeychain(), readCredentialsFile()]);
   const login = parseLogin(keychain) ?? parseLogin(file);
-  if (!login) throw new Error("Claude Code login not found - run `claude auth login`");
+  if (!login) {
+    throw new UsageError(
+      "unavailable",
+      "Claude Code login not found - run `claude auth login`",
+    );
+  }
   if (login.expires && login.expires < Date.now()) {
-    throw new Error(
+    throw new UsageError(
+      "expired",
       "Claude Code token expired - send a prompt with a Claude Agent model to refresh it",
     );
   }
@@ -103,7 +105,6 @@ async function fetchUsage(): Promise<UsageWindow[]> {
 
 export const claudeAgent: UsageProvider = {
   id: "claude-agent",
-  integrations: ["claude-agent"],
   accepts: (credential) => credential.kind === "external",
   fetch: fetchUsage,
 };

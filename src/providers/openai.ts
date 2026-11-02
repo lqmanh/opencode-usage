@@ -1,11 +1,6 @@
 import { epochToISO, fetchUsageJSON, isRecord, toNumber } from "../http";
-import {
-  WINDOW_LABELS,
-  expectUsageRecord,
-  expectWindows,
-  windowLabel,
-  type UsageWindow,
-} from "../usage";
+import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../usage";
+import { expectUsageRecord, expectWindows } from "./decode";
 import type { Credential, UsageProvider } from "./types";
 
 const ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
@@ -28,7 +23,7 @@ function decodeUsage(input: unknown): UsageWindow[] {
   const record = expectUsageRecord(input);
   const rateLimit = record.rate_limit;
   if (!isRecord(rateLimit)) {
-    throw new Error("usage response is missing the rate_limit field");
+    throw new Error("Usage response is missing the rate_limit field");
   }
   const windows: UsageWindow[] = [];
   const primary = readWindow(rateLimit.primary_window, "rolling", WINDOW_LABELS.rolling);
@@ -51,7 +46,6 @@ async function fetchUsage(credential: Credential): Promise<UsageWindow[]> {
 
 export const openai: UsageProvider = {
   id: "openai",
-  integrations: ["openai"],
   // ChatGPT subscription usage is only readable through an OAuth connection.
   accepts: (credential) => credential.kind === "oauth",
   fetch: fetchUsage,

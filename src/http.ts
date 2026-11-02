@@ -1,4 +1,8 @@
+import { UsageError } from "./errors";
+import { withTimeout } from "./timeout";
+
 const TIMEOUT_MS = 10_000;
+const TIMEOUT_MESSAGE = `Request did not respond within ${TIMEOUT_MS}ms`;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -19,27 +23,6 @@ export function epochToISO(value: unknown): string {
   return new Date(time < 1e12 ? time * 1000 : time).toISOString();
 }
 
-// AbortSignal.timeout does not reliably fire in the TUI runtime, so settlement
-// must not depend on signal dispatch.
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`request did not respond within ${ms}ms`)),
-      ms,
-    );
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
 export async function fetchUsageJSON(
   url: string,
   token: string,
@@ -57,15 +40,28 @@ export async function fetchUsageJSON(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     }),
     TIMEOUT_MS,
-  );
+    TIMEOUT_MESSAGE,
+  ).promise;
   if (!response.ok) {
     const detail = await withTimeout(
       response.text().catch(() => ""),
       TIMEOUT_MS,
-    );
-    throw new Error(
-      `usage request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 120)}` : ""}`,
+      TIMEOUT_MESSAGE,
+    ).promise;
+    const suffix = detail ? `: ${detail.slice(0, 120)}` : "";
+    if (response.status === 401) {
+      throw new UsageError(
+        "expired",
+        `Credentials expired or invalid (HTTP 401)${suffix}`,
+      );
+    }
+    if (response.status === 403) {
+      throw new UsageError("unavailable", `Usage access forbidden (HTTP 403)${suffix}`);
+    }
+    throw new UsageError(
+      "failed",
+      `Usage request failed with HTTP ${response.status}${suffix}`,
     );
   }
-  return withTimeout(response.json(), TIMEOUT_MS);
+  return withTimeout(response.json(), TIMEOUT_MS, TIMEOUT_MESSAGE).promise;
 }

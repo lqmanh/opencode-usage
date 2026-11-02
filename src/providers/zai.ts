@@ -1,11 +1,7 @@
 import { epochToISO, fetchUsageJSON, isRecord, toNumber } from "../http";
-import {
-  WINDOW_LABELS,
-  expectUsageRecord,
-  expectWindows,
-  type UsageWindow,
-} from "../usage";
-import type { Credential, UsageProvider } from "./types";
+import { WINDOW_LABELS, type UsageWindow } from "../usage";
+import { expectUsageRecord, expectWindows } from "./decode";
+import { defineEndpointProvider, type Credential } from "./types";
 
 type WindowData = {
   percent: number;
@@ -21,13 +17,13 @@ function readWindow(item: Record<string, unknown>): WindowData | undefined {
 function decodeUsage(input: unknown): UsageWindow[] {
   const record = expectUsageRecord(input);
   if (record.success === false) {
-    const message = typeof record.msg === "string" ? record.msg : "unknown error";
-    throw new Error(`usage request was rejected: ${message}`);
+    const message = typeof record.msg === "string" ? record.msg : "Unknown error";
+    throw new Error(`Usage request was rejected: ${message}`);
   }
   const data = record.data;
-  if (!isRecord(data)) throw new Error("usage response is missing the data field");
+  if (!isRecord(data)) throw new Error("Usage response is missing the data field");
   if (!Array.isArray(data.limits)) {
-    throw new Error("usage response is missing the limits field");
+    throw new Error("Usage response is missing the limits field");
   }
 
   let fiveHour: WindowData | undefined;
@@ -66,20 +62,11 @@ async function fetchUsage(
   );
 }
 
-function defineZai(id: string, endpoint: string): UsageProvider {
-  return {
-    id,
-    integrations: [id],
-    accepts: () => true,
-    fetch: (credential) => fetchUsage(endpoint, credential),
-  };
-}
-
-export const zaiCodingPlan = defineZai(
-  "zai-coding-plan",
-  "https://api.z.ai/api/monitor/usage/quota/limit",
+export const zaiCodingPlan = defineEndpointProvider("zai-coding-plan", (credential) =>
+  fetchUsage("https://api.z.ai/api/monitor/usage/quota/limit", credential),
 );
-export const zhipuaiCodingPlan = defineZai(
+export const zhipuaiCodingPlan = defineEndpointProvider(
   "zhipuai-coding-plan",
-  "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+  (credential) =>
+    fetchUsage("https://open.bigmodel.cn/api/monitor/usage/quota/limit", credential),
 );

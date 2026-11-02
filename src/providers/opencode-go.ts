@@ -1,14 +1,8 @@
+import { UsageError } from "../errors";
 import { fetchUsageJSON, isRecord } from "../http";
-import {
-  WINDOW_LABELS,
-  expectUsageRecord,
-  expectWindows,
-  type UsageWindow,
-  type WindowID,
-} from "../usage";
+import { WINDOW_LABELS, type UsageWindow, type WindowID } from "../usage";
+import { expectUsageRecord, expectWindows } from "./decode";
 import type { Credential, UsageProvider } from "./types";
-
-const INTEGRATIONS = ["opencode-go", "opencode"] as const;
 
 // API keys use the zen endpoint; Console tokens use the inference gateway.
 function endpointFor(credential: Credential) {
@@ -19,12 +13,12 @@ function endpointFor(credential: Credential) {
 
 function decodeUsage(input: unknown): UsageWindow[] {
   const usage = expectUsageRecord(input).usage;
-  if (!isRecord(usage)) throw new Error("usage response is missing the usage field");
+  if (!isRecord(usage)) throw new Error("Usage response is missing the usage field");
   const read = (id: WindowID): UsageWindow => {
     const item = usage[id];
-    if (!isRecord(item)) throw new Error(`usage response is missing ${id}`);
+    if (!isRecord(item)) throw new Error(`Usage response is missing ${id}`);
     if (typeof item.percent !== "number" || typeof item.resetsAt !== "string") {
-      throw new Error(`usage response has an invalid ${id} window`);
+      throw new Error(`Usage response has an invalid ${id} window`);
     }
     return {
       id,
@@ -42,7 +36,8 @@ async function fetchUsage(credential: Credential): Promise<UsageWindow[]> {
     credential.expires &&
     credential.expires < Date.now()
   ) {
-    throw new Error(
+    throw new UsageError(
+      "expired",
       "Console credential expired - send a prompt with an OpenCode Go model to refresh it",
     );
   }
@@ -61,7 +56,6 @@ async function fetchUsage(credential: Credential): Promise<UsageWindow[]> {
 // `opencode`.
 export const opencodeGo: UsageProvider = {
   id: "opencode-go",
-  integrations: INTEGRATIONS,
   // `opencode` keys are service accounts, not Go API keys.
   accepts: (credential) =>
     !(credential.integrationID === "opencode" && credential.kind === "key"),

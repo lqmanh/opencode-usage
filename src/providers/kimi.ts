@@ -1,12 +1,7 @@
 import { fetchUsageJSON, isRecord, toNumber } from "../http";
-import {
-  WINDOW_LABELS,
-  expectUsageRecord,
-  expectWindows,
-  windowLabel,
-  type UsageWindow,
-} from "../usage";
-import type { Credential, UsageProvider } from "./types";
+import { WINDOW_LABELS, windowLabel, type UsageWindow } from "../usage";
+import { expectUsageRecord, expectWindows } from "./decode";
+import { defineEndpointProvider, type Credential } from "./types";
 
 const DEFAULT_WINDOW_MINUTES = 5 * 60;
 const TIME_UNITS: Record<string, number> = { MINUTE: 1, HOUR: 60, DAY: 1440 };
@@ -81,20 +76,9 @@ async function fetchUsage(
   return decodeUsage(await fetchUsageJSON(endpoint, credential.token));
 }
 
-function defineKimi(id: string, endpoint: string): UsageProvider {
-  return {
-    id,
-    integrations: [id],
-    accepts: () => true,
-    fetch: (credential) => fetchUsage(endpoint, credential),
-  };
-}
-
-export const kimiCn = defineKimi(
-  "kimi-code-plan-cn",
-  "https://api.kimi.com/coding/v1/usages",
+export const kimiCn = defineEndpointProvider("kimi-code-plan-cn", (credential) =>
+  fetchUsage("https://api.kimi.com/coding/v1/usages", credential),
 );
-export const kimiGlobal = defineKimi(
-  "kimi-code-plan-global",
-  "https://api.kimi.ai/coding/v1/usages",
+export const kimiGlobal = defineEndpointProvider("kimi-code-plan-global", (credential) =>
+  fetchUsage("https://api.kimi.ai/coding/v1/usages", credential),
 );

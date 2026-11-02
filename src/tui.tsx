@@ -3,9 +3,12 @@ import { Plugin } from "@opencode/plugin/tui";
 import type { ResolvedTheme } from "@opencode/theme/tui";
 import type { JSX } from "@opentui/solid";
 import { createEffect, createRoot, on, untrack } from "solid-js";
+import { createUsageClient } from "./client";
 import { clampPercent, displayPercent, formatReset } from "./format";
-import { findProvider, resolveCredential } from "./providers";
-import { selectWindow, type UsageWindow } from "./usage";
+import { messageOf } from "./errors";
+import { isRecord } from "./http";
+import { USAGE_INVALIDATION_EVENTS, usageRpc } from "./rpc";
+import { selectWindow, type ProviderSnapshot, type UsageWindow } from "./usage";
 
 const LEVEL_COLORS = ["success", "warning", "error"] as const;
 const LEVEL_GLYPHS = ["◇", "◈", "◆"];
@@ -36,6 +39,59 @@ function levelColor(theme: ResolvedTheme, percent: number | undefined) {
 
 function snapshot(state: WidgetState | null) {
   return state && (state.status === "ok" || state.status === "error") ? state : undefined;
+}
+
+function errorState(
+  message: string,
+  previous: Partial<Snapshot> | undefined,
+  current?: ProviderSnapshot,
+): WidgetState {
+  return {
+    status: "error",
+    message,
+    name: current?.name ?? previous?.name,
+    account: current?.account ?? previous?.account,
+    windows: current && current.windows.length > 0 ? current.windows : previous?.windows,
+    now: Date.now(),
+  };
+}
+
+function widgetState(
+  current: ProviderSnapshot,
+  previous: Partial<Snapshot> | undefined,
+): WidgetState {
+  if (current.error) return errorState(current.error.message, previous, current);
+  return {
+    status: "ok",
+    name: current.name,
+    account: current.account ?? "",
+    windows: current.windows,
+    now: Date.now(),
+  };
+}
+
+function rpcErrorMessage(error: unknown): string {
+  if (isRecord(error)) {
+    if (error.type === "rpc.method_not_found" || error.type === "rpc.unavailable") {
+      return "Usage server plugin not loaded; add opencode-usage to opencode.json(c)";
+    }
+  }
+  return messageOf(error);
+}
+
+function readSnapshot(output: unknown): ProviderSnapshot | undefined {
+  if (!isRecord(output) || !Array.isArray(output.providers)) return undefined;
+  const [current] = output.providers;
+  if (
+    !isRecord(current) ||
+    typeof current.providerID !== "string" ||
+    typeof current.name !== "string" ||
+    typeof current.fetchedAt !== "number" ||
+    !Array.isArray(current.windows)
+  ) {
+    return undefined;
+  }
+  return current as unknown as ProviderSnapshot;
 }
 
 function ResetTime(props: {
@@ -236,18 +292,11 @@ export default Plugin.define({
     let countdown: string | undefined;
     let disposeSidebar: (() => void) | undefined;
     let disposeCompact: (() => void) | undefined;
-    let sidebarRendered = false;
 
     // ui.model.current() reflects the picker's draft selection; the session's
     // stored model only updates on submit.
-    function selectedProvider() {
-      const providerID = context.ui.model.current()?.providerID;
-      if (!providerID) return undefined;
-      const info = context.data.location.provider
-        .list()
-        ?.find((item) => item.id === providerID);
-      const adapter = findProvider(providerID, info?.canonical);
-      return adapter ? { adapter, info } : undefined;
+    function selectedProviderID() {
+      return context.ui.model.current()?.providerID;
     }
 
     function claimSlot(
@@ -262,18 +311,16 @@ export default Plugin.define({
 
     function renderSidebar() {
       disposeSidebar?.();
-      sidebarRendered = false;
-      disposeSidebar = claimSlot("sidebar.content", (state, theme) => {
-        sidebarRendered = true;
-        return <UsageWidget state={state} theme={theme} />;
-      });
+      disposeSidebar = claimSlot("sidebar.content", (state, theme) => (
+        <UsageWidget state={state} theme={theme} />
+      ));
       context.renderer.requestRender();
     }
 
     function renderCompact() {
       disposeCompact?.();
       disposeCompact = claimSlot("session.composer.top", (state, theme) =>
-        selectedProvider() ? (
+        selectedProviderID() ? (
           <CompactUsage
             state={state}
             theme={theme}
@@ -306,57 +353,44 @@ export default Plugin.define({
       renderCompact();
     }
 
-    let generation = 0;
-
-    async function refresh(selected = selectedProvider()) {
-      const current = ++generation;
-      let name: string | undefined;
-      let account: string | undefined;
-      try {
-        const credential = selected?.info
-          ? resolveCredential(selected.adapter, await context.client.credential.list())
-          : undefined;
-        if (current !== generation) return;
-        if (!selected?.info || !credential) {
-          last = { status: "unavailable" };
-        } else {
-          name = selected.info.name;
-          account = credential.label;
-          const windows = await selected.adapter.fetch(credential);
-          if (current !== generation) return;
-          last = { status: "ok", name, account, windows, now: Date.now() };
-        }
-      } catch (error) {
-        if (current !== generation) return;
-        const previous = snapshot(last);
-        last = {
-          status: "error",
-          message: error instanceof Error ? error.message : String(error),
-          windows: previous?.windows,
-          account: account ?? previous?.account,
-          name: name ?? previous?.name,
-          now: Date.now(),
-        };
-      }
-      renderAll();
-    }
-
-    renderAll();
-    void refresh();
-    // sidebarRendered is only set while the sidebar slot renders, so polling
-    // pauses when neither widget can show.
-    const timer = setInterval(() => {
-      const selected = selectedProvider();
-      if (!sidebarRendered && !selected) return;
-      void refresh(selected);
-    }, refreshSeconds * 1000);
-
-    const stopCredentialUpdated = context.data.on("credential.updated", () => {
-      void refresh();
+    const rpc = context.client.rpc(usageRpc);
+    const client = createUsageClient({
+      refreshSeconds,
+      location: context.location,
+      load: async (providerID, signal) => {
+        const output = await rpc.get(
+          { providerID },
+          {
+            ...(context.location ? { location: context.location } : {}),
+            signal,
+          },
+        );
+        return readSnapshot(output);
+      },
+      subscribe: (listener) =>
+        rpc.events.on("updated", (event) => {
+          const providerID = event.data.providerID;
+          const fetchedAt = event.data.fetchedAt;
+          if (typeof providerID !== "string" || typeof fetchedAt !== "number") return;
+          listener({ providerID, fetchedAt, location: event.location });
+        }),
+      onSnapshot: (current) => {
+        last = current ? widgetState(current, snapshot(last)) : { status: "unavailable" };
+        renderAll();
+      },
+      onError: (error) => {
+        last = errorState(rpcErrorMessage(error), snapshot(last));
+        renderAll();
+      },
     });
-    const stopCredentialSwitched = context.data.on("credential.switched", () => {
-      void refresh();
-    });
+
+    client.select(selectedProviderID());
+
+    const stopRefreshEvents = USAGE_INVALIDATION_EVENTS.map((type) =>
+      context.data.on(type, () => {
+        void client.refresh(true);
+      }),
+    );
 
     // Watch theme and model selection; a remount is the only way to repaint.
     const disposeWatch = createRoot((dispose) => {
@@ -375,9 +409,7 @@ export default Plugin.define({
           () => context.ui.model.current()?.providerID,
           (providerID, previous) => {
             if (providerID === previous) return;
-            untrack(() => {
-              void refresh();
-            });
+            untrack(() => client.select(providerID));
           },
           { defer: true },
         ),
@@ -386,11 +418,9 @@ export default Plugin.define({
     });
 
     return () => {
-      stopCredentialUpdated();
-      stopCredentialSwitched();
+      for (const stop of stopRefreshEvents) stop();
       disposeWatch();
-      generation++;
-      clearInterval(timer);
+      client.dispose();
       disposeSidebar?.();
       disposeCompact?.();
     };

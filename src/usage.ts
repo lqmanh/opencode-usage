@@ -1,10 +1,26 @@
-import { isRecord } from "./http";
-
 export interface UsageWindow {
   id: string;
   label: string;
   percent: number;
   resetsAt: string;
+}
+
+export const USAGE_ERROR_CODES = ["expired", "unavailable", "failed"] as const;
+
+export type UsageErrorCode = (typeof USAGE_ERROR_CODES)[number];
+
+export interface UsageErrorInfo {
+  code: UsageErrorCode;
+  message: string;
+}
+
+export interface ProviderSnapshot {
+  providerID: string;
+  name: string;
+  account?: string;
+  fetchedAt: number;
+  windows: UsageWindow[];
+  error?: UsageErrorInfo;
 }
 
 export const WINDOW_LABELS = { rolling: "5h", weekly: "1w", monthly: "1mo" } as const;
@@ -23,14 +39,4 @@ export function selectWindow(
   id: string | undefined,
 ): UsageWindow {
   return windows.find((window) => window.id === id) ?? windows[0];
-}
-
-export function expectUsageRecord(input: unknown): Record<string, unknown> {
-  if (!isRecord(input)) throw new Error("usage response was not an object");
-  return input;
-}
-
-export function expectWindows(windows: UsageWindow[]): UsageWindow[] {
-  if (windows.length === 0) throw new Error("usage response carried no usage windows");
-  return windows;
 }
