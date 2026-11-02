@@ -14,8 +14,8 @@ const LEVEL_COLORS = ["success", "warning", "error"] as const;
 const LEVEL_GLYPHS = ["◇", "◈", "◆"];
 
 type Snapshot = {
-  name: string;
-  account: string;
+  providerName: string;
+  accountLabel: string;
   windows: UsageWindow[];
   now: number;
 };
@@ -49,8 +49,8 @@ function errorState(
   return {
     status: "error",
     message,
-    name: current?.name ?? previous?.name,
-    account: current?.account ?? previous?.account,
+    providerName: current?.providerName ?? previous?.providerName,
+    accountLabel: current?.accountLabel ?? previous?.accountLabel,
     windows: current && current.windows.length > 0 ? current.windows : previous?.windows,
     now: Date.now(),
   };
@@ -63,8 +63,8 @@ function widgetState(
   if (current.error) return errorState(current.error.message, previous, current);
   return {
     status: "ok",
-    name: current.name,
-    account: current.account ?? "",
+    providerName: current.providerName,
+    accountLabel: current.accountLabel ?? "",
     windows: current.windows,
     now: Date.now(),
   };
@@ -85,7 +85,7 @@ function readSnapshot(output: unknown): ProviderSnapshot | undefined {
   if (
     !isRecord(current) ||
     typeof current.providerID !== "string" ||
-    typeof current.name !== "string" ||
+    typeof current.providerName !== "string" ||
     typeof current.fetchedAt !== "number" ||
     !Array.isArray(current.windows)
   ) {
@@ -168,12 +168,12 @@ function UsageWidget(props: { state: WidgetState; theme: ResolvedTheme }) {
   );
   return (
     <box flexDirection="column">
-      {current?.name ? (
+      {current?.providerName ? (
         <box flexDirection="row" gap={1}>
           <text fg={props.theme.text.base} flexShrink={0}>
-            <b>{current.name}</b>
+            <b>{current.providerName}</b>
           </text>
-          {current.account ? (
+          {current.accountLabel ? (
             <text
               fg={props.theme.text.muted}
               flexGrow={1}
@@ -182,7 +182,7 @@ function UsageWidget(props: { state: WidgetState; theme: ResolvedTheme }) {
               wrapMode="none"
               textAlign="right"
             >
-              {current.account}
+              {current.accountLabel}
             </text>
           ) : null}
         </box>
@@ -231,7 +231,10 @@ function CompactUsage(props: {
   const current = snapshot(props.state);
   const windows = current?.windows ?? [];
   if (windows.length === 0) return null;
-  const name = props.showAccount && current?.account ? current.account : current?.name;
+  const name =
+    props.showAccount && current?.accountLabel
+      ? current.accountLabel
+      : current?.providerName;
   const selected = selectWindow(windows, props.countdown);
   const reset = formatReset(selected.resetsAt, current?.now);
   const error = props.state.status === "error";
@@ -335,7 +338,7 @@ export default Plugin.define({
     }
 
     function toggleAccount() {
-      if (!snapshot(last)?.account) return;
+      if (!snapshot(last)?.accountLabel) return;
       showAccount = !showAccount;
       queueMicrotask(() => renderCompact());
     }

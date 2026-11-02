@@ -1,11 +1,12 @@
 import { messageOf, UsageError } from "./errors";
+import { accountKeyOf } from "./providers/account-key";
 import type { Credential, UsageProvider } from "./providers/types";
-import type { ProviderSnapshot, UsageErrorInfo } from "./usage";
+import type { ProviderListing, ProviderSnapshot, UsageErrorInfo } from "./usage";
 
 export interface UsageEntry {
   provider: UsageProvider;
   providerID: string;
-  name: string;
+  providerName: string;
   integrationID: string;
 }
 
@@ -15,24 +16,30 @@ export interface UsageServiceOptions {
 }
 
 export interface UsageService {
-  get(entry: UsageEntry): Promise<ProviderSnapshot | undefined>;
-  all(entries: readonly UsageEntry[]): Promise<ProviderSnapshot[]>;
+  get(entry: UsageEntry, bypassCache?: boolean): Promise<ProviderSnapshot | undefined>;
+  list(entries: readonly UsageEntry[]): Promise<ProviderListing[]>;
+  all(entries: readonly UsageEntry[], bypassCache?: boolean): Promise<ProviderSnapshot[]>;
   dispose(): void;
 }
 
 const TTL_MS = 60_000;
 const STATE_KEY = Symbol.for("opencode-usage.state");
 
-type CachedUsage = Omit<ProviderSnapshot, "name">;
+type CachedUsage = Omit<ProviderSnapshot, "providerName">;
 
 type CacheEntry = {
   usage: CachedUsage;
   expires: number;
 };
 
+type InflightEntry = {
+  promise: Promise<CachedUsage | undefined>;
+  bypass: boolean;
+};
+
 type SharedState = {
   cache: Map<string, CacheEntry>;
-  inflight: Map<string, Promise<CachedUsage | undefined>>;
+  inflight: Map<string, InflightEntry>;
   listeners: Set<(providerID: string, fetchedAt: number) => void>;
   lastTimestamp: number;
 };
@@ -72,24 +79,33 @@ function toErrorInfo(error: unknown): UsageErrorInfo {
   };
 }
 
-function baseUsage(
-  providerID: string,
-  account: string | undefined,
-): Pick<CachedUsage, "providerID" | "account" | "fetchedAt"> {
+type AccountIdentity = Pick<ProviderListing, "accountLabel" | "accountKey">;
+
+function accountIdentityOf(entry: UsageEntry, credential: Credential): AccountIdentity {
   return {
-    providerID,
-    ...(account ? { account } : {}),
+    ...(credential.label ? { accountLabel: credential.label } : {}),
+    accountKey: accountKeyOf(entry.provider.id, credential),
+  };
+}
+
+function baseUsage(
+  entry: UsageEntry,
+  identity: AccountIdentity,
+): Pick<CachedUsage, "providerID" | "accountLabel" | "accountKey" | "fetchedAt"> {
+  return {
+    providerID: entry.providerID,
+    ...identity,
     fetchedAt: timestamp(),
   };
 }
 
 function failedUsage(
   entry: UsageEntry,
-  account: string | undefined,
+  identity: AccountIdentity,
   error: unknown,
 ): CachedUsage {
   return {
-    ...baseUsage(entry.providerID, account),
+    ...baseUsage(entry, identity),
     windows: [],
     error: toErrorInfo(error),
   };
@@ -103,44 +119,64 @@ async function load(
   try {
     credential = await options.resolveCredential(entry);
   } catch (error) {
+    const accountLabel = error instanceof UsageError ? error.accountLabel : undefined;
     return failedUsage(
       entry,
-      error instanceof UsageError ? error.account : undefined,
+      { ...(accountLabel ? { accountLabel } : {}), accountKey: null },
       error,
     );
   }
   if (!credential) return undefined;
+
+  const identity = accountIdentityOf(entry, credential);
+  if (!entry.provider.accepts(credential)) {
+    return failedUsage(
+      entry,
+      identity,
+      new UsageError(
+        "unavailable",
+        `Cannot read usage for ${entry.providerName} with the active ${credential.kind} credential`,
+      ),
+    );
+  }
+
   try {
     return {
-      ...baseUsage(entry.providerID, credential.label || undefined),
+      ...baseUsage(entry, identity),
       windows: await entry.provider.fetch(credential),
     };
   } catch (error) {
-    return failedUsage(entry, credential.label || undefined, error);
+    return failedUsage(entry, identity, error);
   }
 }
 
-function snapshotOf(usage: CachedUsage, name: string): ProviderSnapshot {
-  return { ...usage, name };
+function snapshotOf(usage: CachedUsage, providerName: string): ProviderSnapshot {
+  return { ...usage, providerName };
 }
 
 function get(
   entry: UsageEntry,
   options: UsageServiceOptions,
+  bypassCache: boolean,
 ): Promise<ProviderSnapshot | undefined> {
   const key = keyOf(entry);
   const shared = sharedState();
-  const cached = shared.cache.get(key);
-  if (cached && cached.expires > Date.now()) {
-    return Promise.resolve(snapshotOf(cached.usage, entry.name));
+  if (!bypassCache) {
+    const cached = shared.cache.get(key);
+    if (cached && cached.expires > Date.now()) {
+      return Promise.resolve(snapshotOf(cached.usage, entry.providerName));
+    }
+    if (cached) shared.cache.delete(key);
   }
-  if (cached) shared.cache.delete(key);
 
-  let pending = shared.inflight.get(key);
+  const inflight = shared.inflight.get(key);
+  let pending =
+    inflight && (!bypassCache || inflight.bypass) ? inflight.promise : undefined;
+
   if (!pending) {
     let created: Promise<CachedUsage | undefined>;
     created = load(entry, options).then((usage) => {
-      if (usage && shared.inflight.get(key) === created) {
+      if (usage && shared.inflight.get(key)?.promise === created) {
         shared.cache.set(key, { usage, expires: Date.now() + TTL_MS });
         for (const listener of shared.listeners) {
           listener(usage.providerID, usage.fetchedAt);
@@ -148,22 +184,50 @@ function get(
       }
       return usage;
     });
-    shared.inflight.set(key, created);
+    const tracked = { promise: created, bypass: bypassCache };
+    shared.inflight.set(key, tracked);
     const cleanup = () => {
-      if (shared.inflight.get(key) === created) shared.inflight.delete(key);
+      if (shared.inflight.get(key) === tracked) shared.inflight.delete(key);
     };
     created.then(cleanup, cleanup);
     pending = created;
   }
-  return pending.then((usage) => (usage ? snapshotOf(usage, entry.name) : undefined));
+  return pending.then((usage) =>
+    usage ? snapshotOf(usage, entry.providerName) : undefined,
+  );
+}
+
+async function list(
+  entries: readonly UsageEntry[],
+  options: UsageServiceOptions,
+): Promise<ProviderListing[]> {
+  const listed = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const credential = await options.resolveCredential(entry);
+        if (!credential) return undefined;
+        return {
+          providerID: entry.providerID,
+          providerName: entry.providerName,
+          ...accountIdentityOf(entry, credential),
+        };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return listed.filter((entry): entry is ProviderListing => entry !== undefined);
 }
 
 export function createUsageService(options: UsageServiceOptions): UsageService {
   sharedState().listeners.add(options.onRefresh);
   return {
-    get: (entry) => get(entry, options),
-    all: async (entries) => {
-      const snapshots = await Promise.all(entries.map((entry) => get(entry, options)));
+    get: (entry, bypassCache = false) => get(entry, options, bypassCache),
+    list: (entries) => list(entries, options),
+    all: async (entries, bypassCache = false) => {
+      const snapshots = await Promise.all(
+        entries.map((entry) => get(entry, options, bypassCache)),
+      );
       return snapshots.filter(
         (snapshot): snapshot is ProviderSnapshot => snapshot !== undefined,
       );

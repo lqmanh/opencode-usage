@@ -85,17 +85,17 @@ Other clients manage their own polling; the server never polls. The TUI also ref
 
 ## RPC
 
-The server exposes `get` on the `opencode-usage` RPC.
+The server exposes `list` and `get` on the `opencode-usage` RPC.
+
+### list
+
+Returns configured supported providers whose credentials resolve. It never fetches usage.
 
 Input:
 
 ```json
-{
-  "providerID": "opencode-go"
-}
+{}
 ```
-
-`providerID` is optional and is OpenCode's provider ID (`ProviderInfo.id`). With it, `providers` contains zero or one snapshot. Without it, `providers` contains every configured supported provider with an active credential. Unconfigured and unsupported providers are omitted.
 
 Output:
 
@@ -104,8 +104,39 @@ Output:
   "providers": [
     {
       "providerID": "opencode-go",
-      "name": "OpenCode Go",
-      "account": "Default",
+      "providerName": "OpenCode Go",
+      "accountLabel": "Default",
+      "accountKey": "opencode:organization:org_..."
+    }
+  ]
+}
+```
+
+Unconfigured and unsupported providers are omitted. `providerID` is OpenCode's provider ID (`ProviderInfo.id`).
+
+### get
+
+Input:
+
+```json
+{
+  "providerID": "opencode-go",
+  "bypassCache": true
+}
+```
+
+`providerID` is optional. With it, `providers` contains zero or one snapshot. Without it, `providers` contains every configured supported provider with an active credential. `bypassCache` is optional; `true` skips the 60-second cache, fetches fresh, updates the cache, and emits `updated`. `false` or omitted uses the cache.
+
+Output:
+
+```json
+{
+  "providers": [
+    {
+      "providerID": "opencode-go",
+      "providerName": "OpenCode Go",
+      "accountLabel": "Default",
+      "accountKey": "opencode:organization:org_...",
       "fetchedAt": 1762041600000,
       "windows": [
         {
@@ -122,7 +153,9 @@ Output:
 
 - `fetchedAt` is the snapshot version in Unix milliseconds.
 - `resetsAt` is ISO 8601 and may be empty.
-- `account` is the active connection's label or environment variable name.
+- `providerName` is the provider display name.
+- `accountLabel` is the active connection's label or environment variable name.
+- `accountKey` is `openai:account:<id>` for OpenAI, `opencode:organization:<id>` for OpenCode Go Console OAuth, and `null` otherwise. It is used to merge accounts across hosts.
 
 Provider failures use the same snapshot with `windows: []` and an `error` containing a `code` and `message`:
 
@@ -138,8 +171,8 @@ Results are cached for 60 seconds. After a fresh fetch, the server emits `rpc.op
 
 A client only needs the server part.
 
-1. Call `get({ providerID })` for the provider the user is looking at, or `get({})` for all configured providers.
-2. Render `windows` and `account` using the client's own surfaces.
+1. Call `list({})` to discover configured providers, `get({ providerID })` for the provider the user is looking at, or `get({})` for all providers.
+2. Render `providerName`, `accountLabel`, and `windows` using the client's own surfaces.
 3. Handle `error` entries per provider. An empty `providers` array means unconfigured or unsupported.
 4. Subscribe to `rpc.opencode-usage.updated` if the client has an event stream. Otherwise poll.
 5. Use `fetchedAt` to ignore stale events and avoid unnecessary refetches.

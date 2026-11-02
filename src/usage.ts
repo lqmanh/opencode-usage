@@ -14,10 +14,14 @@ export interface UsageErrorInfo {
   message: string;
 }
 
-export interface ProviderSnapshot {
+export interface ProviderListing {
   providerID: string;
-  name: string;
-  account?: string;
+  providerName: string;
+  accountLabel?: string;
+  accountKey: string | null;
+}
+
+export interface ProviderSnapshot extends ProviderListing {
   fetchedAt: number;
   windows: UsageWindow[];
   error?: UsageErrorInfo;

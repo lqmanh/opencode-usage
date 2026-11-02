@@ -22,9 +22,17 @@ type ProviderDirectory = {
 
 type IntegrationDirectory = Plugin.Context["integration"];
 
-function readProviderID(input: unknown): string | undefined {
-  if (!isRecord(input)) return undefined;
-  return typeof input.providerID === "string" ? input.providerID : undefined;
+type GetInput = {
+  providerID?: string;
+  bypassCache: boolean;
+};
+
+function readGetInput(input: unknown): GetInput {
+  if (!isRecord(input)) return { bypassCache: false };
+  return {
+    providerID: typeof input.providerID === "string" ? input.providerID : undefined,
+    bypassCache: input.bypassCache === true,
+  };
 }
 
 function integrationFor(info: ProviderInfo): string {
@@ -38,7 +46,7 @@ function entryFor(info: ProviderInfo): UsageEntry | undefined {
   return {
     provider,
     providerID: info.id,
-    name: info.name,
+    providerName: info.name,
     integrationID: integrationFor(info),
   };
 }
@@ -79,23 +87,14 @@ async function resolveCredential(
   } catch (error) {
     throw new UsageError(
       "expired",
-      `Could not resolve ${entry.name} credentials: ${messageOf(error)}`,
+      `Could not resolve ${entry.providerName} credentials: ${messageOf(error)}`,
       active?.type === "credential" ? active.label : active?.name,
     );
   }
   if (!active || !value) return undefined;
 
   const label = active.type === "credential" ? active.label : active.name;
-
-  const credential = credentialFromValue(entry.integrationID, value, label);
-  if (!entry.provider.accepts(credential)) {
-    throw new UsageError(
-      "unavailable",
-      `Cannot read usage for ${entry.name} with the active ${credential.kind} credential`,
-      credential.label,
-    );
-  }
-  return credential;
+  return credentialFromValue(entry.integrationID, value, label);
 }
 
 export default Plugin.define({
@@ -108,17 +107,25 @@ export default Plugin.define({
     });
 
     const registration = await context.rpc.register(usageRpc, {
+      list: async (_input, call) => {
+        try {
+          const entries = await providerEntries(context.provider);
+          return { providers: await service.list(entries) };
+        } catch (error) {
+          return call.error("internal", messageOf(error), {});
+        }
+      },
       get: async (input, call) => {
-        const providerID = readProviderID(input);
+        const { providerID, bypassCache } = readGetInput(input);
         try {
           if (providerID !== undefined) {
             const entry = await singleEntry(context.provider, providerID);
             if (!entry) return { providers: [] };
-            const snapshot = await service.get(entry);
+            const snapshot = await service.get(entry, bypassCache);
             return { providers: snapshot ? [snapshot] : [] };
           }
           const entries = await providerEntries(context.provider);
-          return { providers: await service.all(entries) };
+          return { providers: await service.all(entries, bypassCache) };
         } catch (error) {
           return call.error(
             "internal",

@@ -29,17 +29,44 @@ const ERROR_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const ACCOUNT_KEY_SCHEMA = {
+  anyOf: [{ type: "string" }, { type: "null" }],
+} as const;
+
+const LISTING_PROPERTIES = {
+  providerID: { type: "string" },
+  providerName: { type: "string" },
+  accountLabel: { type: "string" },
+  accountKey: ACCOUNT_KEY_SCHEMA,
+} as const;
+
+const LISTING_REQUIRED = ["providerID", "providerName", "accountKey"] as const;
+
+const LIST_PROVIDER_SCHEMA = {
+  type: "object",
+  properties: LISTING_PROPERTIES,
+  required: LISTING_REQUIRED,
+  additionalProperties: false,
+} as const;
+
+const LIST_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    providers: { type: "array", items: LIST_PROVIDER_SCHEMA },
+  },
+  required: ["providers"],
+  additionalProperties: false,
+} as const;
+
 const SNAPSHOT_SCHEMA = {
   type: "object",
   properties: {
-    providerID: { type: "string" },
-    name: { type: "string" },
-    account: { type: "string" },
+    ...LISTING_PROPERTIES,
     fetchedAt: { type: "number" },
     windows: { type: "array", items: WINDOW_SCHEMA },
     error: ERROR_SCHEMA,
   },
-  required: ["providerID", "name", "fetchedAt", "windows"],
+  required: [...LISTING_REQUIRED, "fetchedAt", "windows"] as const,
   additionalProperties: false,
 } as const;
 
@@ -55,11 +82,27 @@ const OUTPUT_SCHEMA = {
 export const usageRpc = Rpc.define({
   id: "opencode-usage",
   methods: {
+    list: {
+      input: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+      output: LIST_OUTPUT_SCHEMA,
+      errors: {
+        internal: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    },
     get: {
       input: {
         type: "object",
         properties: {
           providerID: { type: "string", minLength: 1 },
+          bypassCache: { type: "boolean" },
         },
         additionalProperties: false,
       },

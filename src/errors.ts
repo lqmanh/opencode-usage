@@ -11,12 +11,12 @@ export function messageOf(error: unknown): string {
 
 export class UsageError extends Error {
   readonly code: UsageErrorCode;
-  readonly account?: string;
+  readonly accountLabel?: string;
 
-  constructor(code: UsageErrorCode, message: string, account?: string) {
+  constructor(code: UsageErrorCode, message: string, accountLabel?: string) {
     super(message);
     this.name = "UsageError";
     this.code = code;
-    this.account = account;
+    this.accountLabel = accountLabel;
   }
 }

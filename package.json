@@ -16,6 +16,7 @@
     "src"
   ],
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "format": "prettier --write .",
